@@ -375,7 +375,8 @@ impl DavInner {
     {
         let mut data = Vec::new();
         pin_utils::pin_mut!(body);
-        while let Some(res) = body.data().await {
+        while let Some(frame) = futures_util::future::poll_fn(|cx| body.as_mut().poll_frame(cx)).await {
+            let res = frame.map_err(|_| ()).map(|res| res.into_data().ok()).transpose().unwrap_or(Err(()));
             let mut buf = res.map_err(|_| {
                 DavError::IoError(io::Error::new(
                     io::ErrorKind::UnexpectedEof,

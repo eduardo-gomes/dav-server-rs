@@ -1,6 +1,7 @@
 use std::any::Any;
 use std::error::Error as StdError;
 use std::io;
+use std::io::ErrorKind;
 
 use bytes::{Buf, Bytes};
 use headers::HeaderMapExt;
@@ -230,8 +231,9 @@ impl crate::DavInner {
         // loop, read body, write to file.
         let mut total = 0u64;
 
-        while let Some(data) = body.data().await {
-            let mut buf = data.map_err(|e| to_ioerror(e))?;
+        while let Some(frame) = futures_util::future::poll_fn(|cx| body.as_mut().poll_frame(cx)).await {
+            let data = frame.map_err(|e| to_ioerror(e)).map(|res| res.into_data().ok()).transpose().unwrap_or(Err(io::Error::new(ErrorKind::Other, "got trailers")));
+            let mut buf = data?;
             let buflen = buf.remaining();
             total += buflen as u64;
             // consistency check.
